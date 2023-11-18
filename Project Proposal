@@ -3,7 +3,6 @@
 ## Project Description
 Alpacalypse is a survival game where the player is thrown into a world of angry alpacas. The goal of the player is to survive as many days as possible, making sure their hunger and health stays full. The game gets progressively harder every day the player survives and alpacas become more aggressive at night.
 
-## Similar Projects
 This game draws inspiration from games such as Terraria where the player explores a finite world and fights off different monsters. This game differs from Terraria in that all of the monsters will be alpacas and the player does not have the abilility to edit the terrain, only to interact with the monsters and items in it. Similar to Terraria, Alpacalypse will become harder at night, when the alpacas become more aggressive, and the game endlessly cycles from day to night. 
 
 ## Structural Plan
