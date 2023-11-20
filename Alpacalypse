@@ -1,0 +1,115 @@
+from cmu_graphics import *
+import random
+
+# create player class
+class Player:
+    def __init__(self):
+        self.health = 5
+        self.hunger = 5
+        self.items = []
+
+# create alpaca class
+class Alpaca:
+    def __init__(self, color):
+        self.color = color
+        self.nightMode = False
+        self.speed = 15
+    
+    def drawAlpaca(app, cx, cy):
+        self.cx = cx
+        self.cy = cy
+        self.color = random.choice(['lightpink', 'skyblue', 'purple'])
+
+
+# keep track of stats
+
+def onAppStart(app):
+    app.hour = 8
+    app.mapHeight = 300
+    app.items = []
+    app.terrainX = 200
+    app.charCx = 200
+    app.charCy = 200
+    app.isMoving = False
+    app.isAtBorder = False
+    app.daysSurvived = 0
+    app.direction = "Right"
+    # images drawn on ipad using ibisPaint
+    app.character = 'MainCharacter1.PNG'
+    app.characterFlipped = 'MainCharacterFlipped.PNG'
+    app.terrain = 'AlpacalypseTerrain.PNG'
+    # key hold
+    app.isMovingRight = False
+    app.isMovingLeft = False
+    app.isMovingUp = False
+    app.isMovingDown = False
+
+
+def redrawAll(app):
+    # draw terrain
+    terrainWidth, terrainHeight = getImageSize(app.terrain)
+    drawImage(app.terrain, app.terrainX, 200, align='center',
+              width=terrainWidth//2, height=terrainHeight//2)
+    
+    # draw character facing direction of last key press
+    charWidth, charHeight = getImageSize(app.character)
+    if app.direction == "Right":
+        drawImage(app.character, app.charCx, app.charCy, align='center',
+                width=charWidth//3, height=charHeight//3)
+    else:
+        drawImage(app.characterFlipped, app.charCx, app.charCy, align='center',
+                width=charWidth//3, height=charHeight//3)
+        
+    # draw labels
+    drawLabel(f"Days survived: {app.daysSurvived}", 60, 10, size=16)
+    
+def onKeyPress(app, key):
+    # check if character is close to border
+    if not (50 <= app.charCx):
+        app.terrainX += 10
+        app.isAtBorder = True
+    else:
+        app.isBorder = False
+    if not (app.charCx <= app.width-50):
+        app.terrainX -= 10
+        app.isAtBorder = True
+    else:
+        app.isBorder = False
+    # if char is at border, don't move
+    if key == 'up':
+        app.charCy -= 10
+    if key == 'down':
+        app.charCy += 10
+    if not app.isBorder:
+        if key == 'right':
+            app.charCx += 10
+            app.direction = "Right"
+        if key == 'left':
+            app.charCx -= 10
+            app.direction = "Left"
+
+def onKeyHold(app, key):
+    if key == 'right':
+        app.isMovingRight = True
+    if key == 'down':
+        app.isMovingDown = True
+    if key == 'left':
+        app.isMovingLeft = True
+    if key == 'up':
+        app.isMovingUp = True
+
+def onStep(app):
+    app.stepsPerSecond = 5
+    if app.isMovingRight == True:
+        app.charCx += 10
+    if app.isMovingLeft == True:
+        app.charCx -= 10
+    if app.isMovingUp == True:
+        app.charCy -= 10
+    if app.isMovingDown == True:
+        app.charCy += 10
+
+def main():
+    runApp()
+
+main()
