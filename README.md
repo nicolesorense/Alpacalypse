@@ -20,7 +20,8 @@ Load the files "Alpacalypse", "player_class", "map_class", "alpaca_class", and "
 All libraries used are built-in python modules. 
 
 ## Shortcut Commands
-* Press tab to load new game
+* Press 'tab' to load new game
+* Press 'b' to toggle cave border visibility
 
 ## Fonts
 All fonts used are default fonts or part of images and do not need to be installed. 
