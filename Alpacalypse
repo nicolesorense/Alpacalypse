@@ -1,115 +1,462 @@
 from cmu_graphics import *
 import random
+from PIL import Image
+from player_class import Player # used lecture slides to figure out how to organize files
+from alpaca_class import Alpaca
+from map_class import Map, Mountain, Projectile, Sun, Moon, Wing, Food
 
-# create player class
-class Player:
-    def __init__(self):
-        self.health = 5
-        self.hunger = 5
-        self.items = []
-
-# create alpaca class
-class Alpaca:
-    def __init__(self, color):
-        self.color = color
-        self.nightMode = False
-        self.speed = 15
-    
-    def drawAlpaca(app, cx, cy):
-        self.cx = cx
-        self.cy = cy
-        self.color = random.choice(['lightpink', 'skyblue', 'purple'])
-
+# all images drawn using ibis paint on ipad
 
 # keep track of stats
 
-def onAppStart(app):
-    app.hour = 8
-    app.mapHeight = 300
+def newGame(app):
     app.items = []
-    app.terrainX = 200
-    app.charCx = 200
-    app.charCy = 200
-    app.isMoving = False
-    app.isAtBorder = False
-    app.daysSurvived = 0
-    app.direction = "Right"
-    # images drawn on ipad using ibisPaint
-    app.character = 'MainCharacter1.PNG'
-    app.characterFlipped = 'MainCharacterFlipped.PNG'
-    app.terrain = 'AlpacalypseTerrain.PNG'
-    # key hold
-    app.isMovingRight = False
-    app.isMovingLeft = False
-    app.isMovingUp = False
-    app.isMovingDown = False
+    app.terrain = Map()
 
+    # keep track of steps
+    app.welcomeSteps = 0
+    app.steps = 0
 
-def redrawAll(app):
-    # draw terrain
-    terrainWidth, terrainHeight = getImageSize(app.terrain)
-    drawImage(app.terrain, app.terrainX, 200, align='center',
-              width=terrainWidth//2, height=terrainHeight//2)
+    # track alpacas
+    app.alpacas = []
+    app.caveAlpacas = []
+
+    # track count so pacas are drawn every 10 seconds
+    app.paca = False
+
+    app.lastWidth = 0
+    app.lastHeight = app.width//4
+
+    # create character
+    app.char = Player(app.width//2, app.height//2)
+
+    # set app dimensions
+    app.width = 1450
+    app.height = 800
+
+    # sun
+    app.sun = Sun()
+
+    # moon
+    app.moon = Moon()
+
+    # generate mountains and powerups
+    app.terrain.generateMountains(0, app.width)
+    for i in range(5):
+        app.terrain.addMountainPoint()
+    app.terrain.generateWings(app.width, app.height)
+    app.terrain.generateFood(app.width, app.height)
+
+    # welcome image
+    app.image = None
+    app.gameTitle = None
+
+    # when game over
+    app.gameOver = False
+    app.endMessage = None
+
+    # generate caves
+    app.terrain.generateCaves(app.width, app.height)
+    app.terrain.getCavesToDraw()
+    app.terrain.identifyCaves(app.width, app.height)
+    app.separateCaves = app.terrain.separateCaves
+    app.terrain.pathsFromGrassToCaves()
+    app.terrain.getCaveBorders()
+    app.caveBorders = app.terrain.caveBorders
+    app.caves = app.terrain.cavesToDraw
+    app.walls = app.terrain.walls
+    app.tunnels = app.terrain.tunnels
+
+    app.setMaxShapeCount(8000)
+
+    app.background = 'gray'
+
+def onAppStart(app):
+    newGame(app)
+
+#----------------------------------------------------
+# got guidance from class demo
+
+def welcome_redrawAll(app):
+    if app.image != None:
+        imageWidth, imageHeight = getImageSize(app.image)
+        drawImage(app.image, 0, 0, width=imageWidth*1.13, height=imageHeight*1.1)
     
-    # draw character facing direction of last key press
-    charWidth, charHeight = getImageSize(app.character)
-    if app.direction == "Right":
-        drawImage(app.character, app.charCx, app.charCy, align='center',
-                width=charWidth//3, height=charHeight//3)
+    if app.gameTitle:
+        imageWidth, imageHeight = getImageSize(app.gameTitle)
+        drawImage(app.gameTitle, app.width//2-170, app.height//2-165, 
+                  width=imageWidth*.62,
+                  height=imageHeight*.6)
+    
+    drawRect(app.width//2+190, app.height//2+20, 200, 50, align='center',
+             fill='lightPink')
+    drawLabel('Instructions', app.width//2+190, app.height//2+20, size=30,
+              fill = 'black', font='Helvectiva')
+    drawLabel('Press space to begin', app.width//2+190, app.height//2+70,
+              size=30, fill='white', font='Helvetica')
+
+def welcome_onKeyPress(app, key):
+    if key == 'space':
+        setActiveScreen('game')
+
+def welcome_onStep(app):
+    app.welcomeSteps += 1
+    if (app.welcomeSteps % 70 <= 10) or (app.welcomeSteps % 50 <= 8):
+        app.image = 'madPaca.PNG'
+        app.gameTitle = 'alpacalypseTitle.PNG'
     else:
-        drawImage(app.characterFlipped, app.charCx, app.charCy, align='center',
-                width=charWidth//3, height=charHeight//3)
+        # drawn on ipad using ibisPaint
+        # got inspiration from this photo: https://play-lh.googleusercontent.com/gIR2nsM93g7ZB3WWRlnJEp89gvhFd_NQfI1CV6l1KJ9GV8OIHa_gWuhShMPuGNaHePNo
+        app.image = 'alpacalypseStartingScreen.PNG'
+        app.gameTitle = None
+
+#----------------------------------------------------
+
+def game_redrawAll(app):
+    if not app.gameOver:
+        # if day draw clouds and sun
+        if app.terrain.time == 'day':
+            img = '/Users/nicolesorensen/Downloads/15112/Clouds.PNG'
+            drawImage(img, 0, 0, width=app.width, height=app.height//3)
+            app.sun.drawSun()
+        if app.terrain.time == 'night':
+            img = 'nightSky.png'
+            drawImage(img, 0, 0, width=app.width, height=app.height//3)
+            app.moon.drawMoon()
+
+        # draw caves
+        app.terrain.drawCaves()
+
+        # draw tunnels
+        app.terrain.drawTunnels()
+
+        # draw border
+        # for point in app.caveBorders:
+        #     drawRect(point[0]*20, point[1]*20+300, 20, 20, fill='black',
+        #              opacity=50)
+
+        # draw mountains
+        app.terrain.drawMountains(0, app.width)
+
+        # draw terrain
+        drawRect(0, 120, app.width, 190,
+                    fill = 'mediumseagreen')
+
+        # draw shrubs
+        numShrubs = 30
+        app.terrain.drawShrubs(numShrubs, app.width, app.height)
+
+        # draw alpacas
+        for alpaca in app.alpacas:
+            alpaca.drawPaca()
+
+        # draw character
+        char = app.char
+        char.drawChar()
+
+        # draw labels
+        fill = 'white' if app.terrain.time == 'night' else 'black'
+        drawLabel(f"Days survived: {char.daysSurvived}", 60, 10, size=16,
+                                        fill = fill)
+
+        # draw projectiles
+        for projectile in app.terrain.projectiles:
+                projectile.draw()
+
+        # draw new shrubs when player is at border
+        app.terrain.drawAtBorder(char, app.width, app.height)
+
+        # draw health and hunger
+        char.drawHealth()
+        char.drawHunger()
+
+        # jumping
+        char.drawJumping()
+            
+        # walking
+        char.drawWalking()
+                
+        # draw wings
+        for wing in app.terrain.wings:
+            wing.draw()
+
+        # draw food
+        for food in app.terrain.food:
+            food.draw()
         
-    # draw labels
-    drawLabel(f"Days survived: {app.daysSurvived}", 60, 10, size=16)
+        # draw alpaca masks
+        for mask in app.terrain.pacaMasks:
+            mask.draw()
+
+        # flying
+        if char.wingPowerUp:
+            # draw cast shadow
+            drawOval(char.x, char.lastY+(char.charHeight//4)+20, 
+                         20, 8)
+
+    if app.gameOver:
+        image = 'EndScreen.PNG'
+        width, height = getImageSize(image)
+        drawRect(0, 0, app.width, app.height, fill='black')
+        drawImage(image, app.width//2, app.height//2 - 7, width=width*1, 
+                  height=height*1,align='center')
+        drawLabel(app.endMessage, app.width//2+400, app.height//2-300,
+                  size = 30, fill='white')
     
-def onKeyPress(app, key):
+def game_onKeyPress(app, key):
+    char = app.char
     # check if character is close to border
-    if not (50 <= app.charCx):
-        app.terrainX += 10
-        app.isAtBorder = True
+    if not (50 <= char.x):
+        app.terrain.scroll('left')
+        for alpaca in app.alpacas:
+            alpaca.scroll('left')
+        char.isAtLeftBorder = True
     else:
-        app.isBorder = False
-    if not (app.charCx <= app.width-50):
-        app.terrainX -= 10
-        app.isAtBorder = True
+        char.isAtLeftBorder = False
+    if not (char.x <= app.width-50):
+        app.terrain.scroll('right')
+        for alpaca in app.alpacas:
+            alpaca.scroll('right')
+        char.isAtRightBorder = True
     else:
-        app.isBorder = False
+        char.isAtRightBorder = False
+
+    if key == 'up' and not char.isJumping and not char.atCaveBorder:
+        char.y -= 10
+    if key == 'down' and not char.isJumping and not char.atCaveBorder:
+        char.y += 10
     # if char is at border, don't move
-    if key == 'up':
-        app.charCy -= 10
-    if key == 'down':
-        app.charCy += 10
-    if not app.isBorder:
+    if not char.isAtRightBorder and not char.atCaveBorder:
         if key == 'right':
-            app.charCx += 10
-            app.direction = "Right"
-        if key == 'left':
-            app.charCx -= 10
-            app.direction = "Left"
+            char.x += 10
+            char.facing = 'right' 
+    if not char.isAtLeftBorder and not char.atCaveBorder:
+        if key == 'left': 
+            char.x -= 10
+            char.facing = 'left'
 
-def onKeyHold(app, key):
-    if key == 'right':
-        app.isMovingRight = True
-    if key == 'down':
-        app.isMovingDown = True
-    if key == 'left':
-        app.isMovingLeft = True
-    if key == 'up':
-        app.isMovingUp = True
+    # jump
+    if key == 'space' and not app.gameOver:
+        char.isJumping = True
+        char.lastY = char.y
 
-def onStep(app):
-    app.stepsPerSecond = 5
-    if app.isMovingRight == True:
-        app.charCx += 10
-    if app.isMovingLeft == True:
-        app.charCx -= 10
-    if app.isMovingUp == True:
-        app.charCy -= 10
-    if app.isMovingDown == True:
-        app.charCy += 10
+    if key == 'space' and app.gameOver:
+        newGame(app)
+
+    # find shortest path to alpaca mask
+    if key == 'p' and len(app.terrain.pacaMasks) == 1:
+        app.terrain.findShortestPath(app.char, app.width, app.height)
+        print(app.terrain.shortestPath)
+
+def game_onKeyHold(app, keys):
+    char = app.char
+    char.updateOnKeyHold(keys)
+
+    # check if character is close to border
+    if not (50 <= char.x):
+        app.terrain.scroll('left')
+        for alpaca in app.alpacas:
+            alpaca.scroll('left')
+        char.isAtLeftBorder = True
+    else:
+        char.isAtLeftBorder = False
+    if not (char.x <= app.width-50):
+        app.terrain.scroll('right')
+        for alpaca in app.alpacas:
+            alpaca.scroll('right')
+        char.isAtRightBorder = True
+    else:
+        char.isAtRightBorder = False
+
+def game_onKeyRelease(app, key):
+    char = app.char
+    char.isWalking = False
+    if key in ['left', 'right', 'up', 'down', 'rightUp', 'leftUp', 'leftDown',
+               'rightDown']:
+        char.dirMoving = None
+
+def game_onStep(app):
+    char = app.char
+    app.paca = False
+    app.steps += 1
+    app.stepsPerSecond = 20
+
+    # player moves if key is held
+    char.moveOnKeyHold()
+
+    # alpacas spit if near and facing player
+    projectiles = app.terrain.projectiles
+    for alpaca in app.alpacas:
+        if alpaca.isFacingPlayer(app.char) and not char.maskPowerUp:
+            direction = alpaca.facing
+            projectiles.append(Projectile(alpaca.x, alpaca.y-10, 
+                                                direction, alpaca.color))
+    for projectile in projectiles:
+        projectile.fire()
+
+    # check for collision every 0.5 seconds
+    if app.steps % 10 == 0:
+        for projectile in projectiles:
+            if projectile.isCollision(char):
+                char.health -= 1
+
+    # create new alpaca (not in wall)
+    if app.steps % 30 == 0:
+        if len(app.alpacas) <= 9:
+            (x, y) = generatePaca(app)
+            app.alpacas.append(Alpaca(x, y, 'ground'))
+            app.paca = True
+        # have alpacas spawn in large enough distinct caves
+        cave = random.choice(app.separateCaves)
+        if len(cave) >= 20 and len(app.alpacas) <= 7:
+            (x, y) = random.choice(cave)
+            app.alpacas.append(Alpaca(x*20, y*20+300, 'cave'))
+            app.paca = True
+                
+    # have food spawn in large enough distinct caves
+    cave = random.choice(app.separateCaves)
+    if len(cave) >= 20 and len(app.terrain.food) <= 7:
+        (x, y) = random.choice(cave)
+        app.terrain.food.append(Food(x*20, y*20+300))
+
+    # generate alpacaMask occasionally in caves
+    if app.steps % 100 == 0:
+        app.terrain.generatePacaMask(app.separateCaves)
+
+    # alpaca movement
+    for alpaca in app.alpacas:
+        alpaca.move(app.steps, app.walls)
+    
+    if app.steps % 1200 <= 600:
+        # move sun
+        app.terrain.time = 'day'
+        app.sun.moveSun(app.steps)
+    else:
+        # move moon
+        app.terrain.time = 'night'
+        app.moon.moveMoon(app.steps)
+
+    # update days survived
+    if app.steps % 600 == 0:
+        app.char.daysSurvived += 1
+
+    # jumping
+    if char.isJumping == True:
+        if app.steps % 8 == 0:
+            char.jumpImageIndex += 1
+            char.jumpImageIndex %= len(char.jumpImages)
+        char.jumpIndex += 1
+        char.jump(char.jumpIndex)
+
+    # walking
+    if char.isWalking:
+        char.walkIndex += 1
+        char.walkIndex %= len(char.walkImages)
+
+    # check if player jumps on alpaca
+    for alpaca in app.alpacas:
+        if ((char.x-10 <= alpaca.x <= char.x+10) and 
+            ((char.y+char.charHeight//2)-10 <= alpaca.y <= (char.y+char.charHeight//2)+10) and
+            not char.wingPowerUp):
+            char.alpacaRiding = alpaca
+            alpaca.playerOnBack = True
+            char.ridingTimer = 200
+        alpaca.moveWithPlayer(char)
+
+    # after 10 seconds, character gets off of alpaca
+    if char.ridingTimer > 0:
+        char.ridingTimer -= 2
+    if char.ridingTimer == 0 and char.alpacaRiding != None:
+        char.alpacaRiding.playerOnBack = False
+        char.alpacaRiding = None
+
+    # check if player bumps into alpaca
+    for alpaca in app.alpacas:
+        if ((char.x-10 <= alpaca.x <= char.x+10) and 
+            ((char.y+char.charHeight//2)-10 <= alpaca.y <= (char.y+char.charHeight//2)+10) and
+            char.facing != alpaca.facing):
+            char.health -= 1
+    
+    # end game if health is 0
+    if char.health <= 0:
+        app.gameOver = True
+        app.endMessage = "The pacas got to you D:"
+
+    # check if char got wing powerup
+    for wing in app.terrain.wings:
+        if ((wing.x-10 <= char.x <= wing.x+10) and 
+            (wing.y-30 <= char.y <= wing.y+30)) and not char.alpacaRiding:
+            char.wingPowerUp = wing
+            wing.onPlayer = True
+            if char.wingTimer == 0:
+                char.wingTimer = 100
+    
+    # follow player if have wing power up
+    if char.wingPowerUp:
+        for wing in app.terrain.wings:
+            if wing.onPlayer:
+                wing.followPlayer(char)
+        char.isWalking = False
+        char.lastY = char.y
+        char.dFromGround = 20
+
+    # lose wing power up after 10 seconds
+    if char.wingTimer > 0:
+        char.wingTimer -= 1
+    if char.wingTimer == 0 and char.wingPowerUp != None:
+        char.wingPowerUp.onPlayer = False
+        app.terrain.wings.remove(char.wingPowerUp)
+        char.wingPowerUp = None
+
+    # check if player gets alpaca mask
+    for mask in app.terrain.pacaMasks:
+        if ((mask.x-10 <= char.x <= mask.x+10) and 
+            (mask.y-30 <= char.y <= mask.y+30)) and not char.alpacaRiding:
+            char.maskPowerUp = mask
+            mask.onPlayer = True
+            if char.maskTimer == 0:
+                char.maskTimer = 100
+
+    # move mask with player
+    for mask in app.terrain.pacaMasks:
+        if mask.onPlayer == True:
+            mask.followPlayer(char)
+
+    # lose mask power up after 10 seconds
+    if char.maskTimer > 0:
+        char.maskTimer -= 1
+    if char.maskTimer == 0 and char.maskPowerUp != None:
+        char.maskPowerUp.onPlayer = False
+        app.terrain.pacaMasks.remove(char.maskPowerUp)
+        char.maskPowerUp = None
+
+    # check if character is at wall
+    char.isAtCaveBorder(app.caveBorders, app.tunnels)
+
+    # decrease hunger every 10 seconds
+    if app.steps % 100 == 0:
+        char.hunger -= 1
+
+    # die if hunger depletes
+    if char.hunger == 0:
+        app.gameOver = True
+        app.endMessage = "You forgot to nom :("
+
+    # check if player gets food
+    for food in app.terrain.food:
+        if ((food.x-10 <= char.x <= food.x+10) and 
+            (food.y-30 <= char.y <= food.y+30)):
+            app.terrain.food.remove(food)
+            app.terrain.generateFood(app.width, app.height)
+            if char.hunger < 5:
+                char.hunger += 1
+
+def generatePaca(app):
+    x = random.randint(0, app.width)
+    y = random.randint(150, 300)
+    return (x,y)
 
 def main():
-    runApp()
+    runAppWithScreens(initialScreen='welcome')
 
 main()
