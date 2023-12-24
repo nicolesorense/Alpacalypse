@@ -6,7 +6,6 @@ import copy
 import tkinter as tk
 from tkinter import font
 import math
-from node_class import Node
 
 # map class - create subclass of shrubs
 class Map:
@@ -19,14 +18,13 @@ class Map:
         self.numMountains = 3
         self.wings = []
         self.food = []
-        self.pacaMasks = []
         self.caves = []
         self.cavesToDraw = []
         self.caveBorders = []
         self.separateCaves = []
+        self.paths = [] # cave tunnels between caves
         self.walls = []
         self.tunnels = []
-        self.shortestPath = []
     
     def drawShrubs(self, numShrubs, canvasWidth, canvasHeight):
         image = '/Users/nicolesorensen/Downloads/15112/shrubs.png'
@@ -43,11 +41,11 @@ class Map:
                 drawImage(image, x, y, width=40, height=40)
 
     # draw new shrubs when player moves at border
-    def drawAtBorder(self, char, canvasWidth, canvasHeight):
+    def drawAtBorder(self, side, canvasWidth, canvasHeight):
         image = '/Users/nicolesorensen/Downloads/15112/shrubs.png'
         # draw a shrub 10% of the time
         z = random.choice([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-        if char.dirMoving == 'left' and char.isAtLeftBorder == True and z == 1:
+        if side == 'left' and z == 1:
             x = random.randint(0, 10)
             y = random.randint(120, 280)
 
@@ -57,7 +55,7 @@ class Map:
                     return
             self.shrubs.append(Shrub(x,y))
             drawImage(image, x, y, width=40, height=40)
-        if char.dirMoving == 'right' and char.isAtRightBorder == True and z == 1:
+        if side == 'right' and z == 1:
             x = random.randint(canvasWidth-5, canvasWidth)
             y = random.randint(120, 280)
             for shrub in self.shrubs:
@@ -125,17 +123,11 @@ class Map:
             self.wings.append(Wing(x, y))
 
     def generateFood(self, appWidth, appHeight):
-        numFood = 5-len(self.food)
+        numFood = 5
         for food in range(numFood):
             x = random.randint(0, appWidth)
-            y = random.randint(120, 270)
+            y = random.randint(120, 200)
             self.food.append(Food(x, y))
-    
-    def generatePacaMask(self, caves):
-        cave = random.choice(caves)
-        if len(cave) >= 20 and len(self.pacaMasks) == 0:
-            (x,y) = random.choice(cave)
-            self.pacaMasks.append(PacaMask(x*20, y*20+300))
 
     # use Cellular Automata algorithm for cave generation
     # used TP Guide on terrain:
@@ -184,60 +176,53 @@ class Map:
     # idea from https://www.kodeco.com/3016-introduction-to-a-pathfinding?page=2
         # and https://www.cs.cmu.edu/~112/notes/student-tp-guides/Terrain.pdf
 
-    # find shortest path from char to mask using A* algorithm
-    def findShortestPath(self, player, appWidth, appHeight):
+    # find shortest path between the distinct caves using A* algorithm
+    def findShortestPath(self):
+        for i in range(len(self.separateCaves)-1):
+            cave1 = self.separateCaves[i]
+            cave2 = self.separateCaves[i+1]
 
-        # start is char end is mask
-        startPoint = Node((player.x, player.y))
-        goalPoint = Node((self.pacaMasks[0].x, self.pacaMasks[0].y))
+            # choose random points in 2 caves
+            startPoint = random.choice(cave1)
+            goalPoint = random.choice(cave2)
 
-        open = [] # nodes that need to be checked
-        closed = [] # nodes already evaluated
-        open.append(startPoint) # F, G, H scores, and parent
+            open = {} # nodes that need to be checked
+            closed = {} # nodes already evaluated
+            open[startPoint] = [0, 0, 0, None] # F, G, H scores, and parent
+            while len(open) > 0:
+                input()
+                # node in open with lowest F-cost
+                curr = getLowestFcost(open)
+                val = open[curr] # so don't lose value
+                open.pop(curr)
+                closed[curr] = val
+                if curr == goalPoint:
+                    # backtrack to start to find path
+                    path = []
+                    while curr != startPoint:
+                        path.append(curr)
+                        curr = open[curr][3] # set curr = parent
+                    self.paths.append(path[::-1]) # add reversed path
 
-        while len(open) > 0:
-            # print(len(open))
-            # node in open with lowest F-cost
-            curr = getLowestFcost(open)
-            open.remove(curr)
-            closed.append(curr)
-            input()
-            print(f'curr: {curr.position}, goalPoint: {goalPoint.position}')
-            if curr == goalPoint:
-                # backtrack to start to find path
-                path = []
-                while curr != None:
-                    print('here')
-                    path.append(curr.position)
-                    curr = curr.parent # set curr = parent
-                self.shortestPath.append(path[::-1]) # add reversed path
-
-            neighbors = getNeighbors(curr, appWidth, appHeight)
-            for neighbor in neighbors:
-                # check if it is walkable
-                neighX = neighbor.position[0]
-                neighY = neighbor.position[1]
-                # check if neighbor is in range
-                if (not (0 < neighX < appWidth) or not (100 < neighY < appHeight)):
-                    continue
-                for closedNeighbor in closed:
-                    if neighbor == closedNeighbor:
+                neighbors = getNeighbors(self, curr)
+                for neighbor in neighbors:
+                    neigh = neighbor[0]
+                    if neigh in closed:
                         continue
-                # G-score -> curr + distance from neigh to curr
-                # print(f"open: {open}")
-                # print(f"curr: {curr}")
-                neighbor.g = (curr.g + 
-                    distance(neighX, neighY, curr.position[0], curr.position[1]))
-                # H-score -> distance from neigh to end
-                neighbor.h = distance(neighX, neighY, goalPoint.position[0], goalPoint.position[1])
-                neighbor.f = neighbor.g + neighbor.h
+                    # G-score -> curr + distance from neigh to curr
+                    # print(f"open: {open}")
+                    # print(f"curr: {curr}")
+                    gScore = (closed[curr][1] + 
+                              distance(neigh[0], neigh[1], curr[0], curr[1]))
+                    # H-score -> distance from neigh to end
+                    hScore = distance(neigh[0], neigh[1], goalPoint[0], goalPoint[1])
+                    fScore = gScore + hScore
 
-                # check if neighbor is already in open list
-                for openNode in open:
-                    # if g-score is better
-                    if neighbor == openNode and neighbor.g < openNode.g:
-                        continue
-                open.append(neighbor)
+                    # check if neighbor is already in open list
+                    if neigh in open:
+                        if gScore > open[neigh][1]:
+                            continue
+                    open[neigh] = [gScore, hScore, fScore, neighbor[1]]
 
     def getCaveBorders(self):
         caves = self.cavesToDraw
@@ -303,27 +288,25 @@ def identifyCavesHelper(self, width, height, x, y, cave, visited):
     identifyCavesHelper(self, width, height, x, y-1, cave, visited) # up
     identifyCavesHelper(self, width, height, x, y+1, cave, visited) # down
 
-def getNeighbors(curr, appWidth, appHeight):
+def getNeighbors(self, curr):
     neighbors = []
     indices = [-1, 0, 1]
     for i in indices:
         for j in indices:
             if not (i == j == 0): # if not curr
-                neighborPos = (curr.position[0]+i, curr.position[1]+j)
-                if (not (0 < neighborPos[0] < appWidth) or not
-                    (100 < neighborPos[1] < appHeight)):
-                    neighbors.append(Node(neighborPos, curr)) # track neighbor and parent
+                neighbor = (curr[0]+i, curr[1]+j)
+                neighbors.append([neighbor, curr]) # track neighbor and parent
     return neighbors
 
 def getLowestFcost(open):
-    minFcost = None
-    minNode = None
+    maxFcost = None
+    maxNode = None
     for node in open:
-        fCost = node.f
-        if minFcost == None or fCost < minFcost:
-            minFcost = fCost
-            minNode = node
-    return minNode
+        fCost = open[node][0]
+        if maxFcost == None or fCost > maxFcost:
+            maxFcost = fCost
+            maxNode = node
+    return maxNode
 
 def neighPassagesAndWalls(grid, rows, cols, currRow, currCol):
         numPassages = 0  
@@ -523,24 +506,6 @@ class Food(Map):
     def draw(self):
         drawImage(self.image, self.x, self.y,
                   width=self.width//4, height=self.height//4)
-        
-class PacaMask(Map):
-    def __init__(self, x, y):
-        super().__init__
-        self.x = x
-        self.y = y
-        self.onPlayer = False
-        image = Image.open('alpacaMask.PNG')
-        self.image = CMUImage(image)
-        self.width, self.height = getImageSize(self.image)
-    
-    def draw(self):
-        drawImage(self.image, self.x, self.y,
-                  width=self.width/4.3, height=self.height/4.6)
-        
-    def followPlayer(self, char):
-        self.x = char.x-17
-        self.y = char.y-32
 
 
 # distance function

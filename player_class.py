@@ -1,11 +1,5 @@
 from cmu_graphics import *
-import random
 from PIL import Image
-import os, pathlib
-import copy
-import tkinter as tk
-from tkinter import font
-import math
 
 # all images drawn on ipad using ibisPaint
 
@@ -14,7 +8,6 @@ class Player:
     def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.lastY = None
         self.health = 5
         self.hunger = 5
         self.items = []
@@ -40,6 +33,8 @@ class Player:
             imFlippedCMU = CMUImage(imFlipped)
             self.walkImages.append(imCMU)
             self.walkFlippedImages.append(imFlippedCMU)
+        self.walkingImWidth = 0
+        self.walkingImHeight = 0
 
         # jumping
         self.jumpIndex = 0
@@ -80,11 +75,23 @@ class Player:
         self.wingTimer = 0
         self.maskPowerUp = None
         self.maskTimer = 0
+        self.lastJumpY = None
+
 
 
         # so don't walk through walls
         self.atWall = False
         self.atCaveBorder = False
+        self.atLeftCaveBorder = False
+        self.atRightCaveBorder = False
+        self.atTopCaveBorder = False
+        self.atBottomCaveBorder = False
+        self.atCaveStart = False
+
+        # zoom
+        self.centered = False
+        self.lastX = None
+        self.lastY = None
 
     def drawHealth(self):
         fullHeart = 'fullHeart.png'
@@ -108,23 +115,66 @@ class Player:
             self.jumpIndex = 0
             self.isJumping = False
 
-    def isAtCaveBorder(self, borders, tunnels):
+    def isAtCaveBorder(self, borders, tunnels, zoom):
         for border in borders:
-            borderX = border[0]*20
-            borderY = border[1]*20 + 300
-            if (((not self.isInTunnel(tunnels)) and ((borderX <= self.x <= borderX+10) and 
-                (borderY <= self.y <= borderY+10)))
-                or (not self.isInTunnel(tunnels) and (290 <= self.y <= 320))):
-                self.atCaveBorder = True
+            borderX = self.x - (self.lastX-border[0]*20)*3 if zoom else border[0]*20
+            borderY = self.y - (self.lastY-(border[1]*20 + 300))*3 if zoom else border[1]*20 + 300
+            # print(f'char: {(self.x, self.y)}, border: {(borderX, borderY)}')
+            # check if at left border
+            if ((not self.isInTunnel(tunnels) and 
+                ((borderX <= self.x <= borderX+30) and 
+                 (borderY <= self.y <= borderY+20))) or 
+                self.isAtTunnelBorder(tunnels) == 'left'):
+                self.atLeftCaveBorder = True
                 return
-        self.atCaveBorder = False
+
+            if ((not self.isInTunnel(tunnels) and 
+                ((borderX-10 <= self.x <= borderX+20) and 
+                 (borderY <= self.y <= borderY+20))) or
+                 self.isAtTunnelBorder(tunnels) == 'right'):
+                self.atRightCaveBorder = True
+                return
+
+            if (not self.isInTunnel(tunnels) and 
+                ((borderX-5 <= self.x <= borderX+15) and 
+                 (borderY+15 <= self.y <= borderY+30))):
+                self.atTopCaveBorder = True
+                return
+
+            if (not self.isInTunnel(tunnels) and 
+                ((borderX-5 <= self.x <= borderX+15) and 
+                 (borderY-15 <= self.y <= borderY+10))):
+                self.atBottomCaveBorder = True
+                return
+
+            if ((not self.isInTunnel(tunnels)) and
+                (280 <= self.y <= 310)):
+                self.atCaveStart = True
+                return
+            
+        self.atLeftCaveBorder = False
+        self.atRightCaveBorder = False
+        self.atTopCaveBorder = False
+        self.atBottomCaveBorder = False
+        self.atCaveStart = False
 
     def isInTunnel(self, tunnels):
         for tunnel in tunnels:
             x = tunnel[0]*20
-            y = 310 # grass end
+            y = 270 # grass end
             if x < self.x < x+30 and y < self.y < y+400:
                 return True
+        return False
+    
+    def isAtTunnelBorder(self, tunnels): # need to check if in a passage
+        for tunnel in tunnels:
+            x = tunnel[0]*20
+            y = 270
+            if (x-10 < self.x < x and y < self.y < y+400):
+                return 'left'
+            if (x+30 < self.x < x+40 and y < self.y < y+400):
+                return 'right'
+        return False
             
     def drawChar(self):
         # draw character facing direction of last key press
@@ -150,7 +200,7 @@ class Player:
                         height=self.charHeight//2, align='center')
                 # draw cast shadow
                 if not self.wingPowerUp:
-                    drawOval(self.x, self.lastY+(self.charHeight//4), 
+                    drawOval(self.x, self.lastJumpY+(self.charHeight//4), 
                             20 - (self.jumpImageIndex % 2)*3, 6,
                             opacity=(100-(self.jumpImageIndex % 2)*20))
             if self.dirMoving in ['left', 'leftUp', 'leftDown', 'down']:
@@ -159,7 +209,7 @@ class Player:
                         height=self.charHeight//2, align='center')
                 # draw cast shadow
                 if not self.wingPowerUp:
-                    drawOval(self.x, self.lastY+(self.charHeight//4), 
+                    drawOval(self.x, self.lastJumpY+(self.charHeight//4), 
                             20 - (self.jumpImageIndex % 2)*3, 6,
                             opacity=(100-(self.jumpImageIndex % 2)*20))
                     
@@ -168,17 +218,25 @@ class Player:
             if self.dirMoving in ['right', 'rightUp', 'rightDown']:
                 image = self.walkImages[self.walkIndex]
                 imageWidth, imageHeight = getImageSize(image)
-                imageWidth = imageWidth*(2/3)
-                imageHeight = imageHeight*(2/3)
-                drawImage(image, self.x, self.y, width=imageWidth//2,
-                        height=imageHeight//2, align='center')
+                if not self.centered:
+                    self.walkingImWidth = imageWidth*(2/3)
+                    self.walkingImHeight = imageHeight*(2/3)
+                else:
+                    self.walkingImWidth = imageWidth*(6/3)
+                    self.walkingImHeight = imageHeight*(6/3)
+                drawImage(image, self.x, self.y, width=self.walkingImWidth//2,
+                        height=self.walkingImHeight//2, align='center')
             if (self.dirMoving in ['left', 'leftUp', 'leftDown']):
                 image = self.walkFlippedImages[self.walkIndex]
                 imageWidth, imageHeight = getImageSize(image)
-                imageWidth = imageWidth*(2/3)
-                imageHeight = imageHeight*(2/3)
-                drawImage(image, self.x, self.y, width=imageWidth//2,
-                        height=imageHeight//2, align='center')
+                if not self.centered:
+                    self.walkingImWidth = imageWidth*(2/3)
+                    self.walkingImHeight = imageHeight*(2/3)
+                else:
+                    self.walkingImWidth = imageWidth*(6/3)
+                    self.walkingImHeight = imageHeight*(6/3)
+                drawImage(image, self.x, self.y, width=self.walkingImWidth//2,
+                        height=self.walkingImHeight//2, align='center')
         elif (self.isWalking == True and not (self.isJumping)):
             if self.dirMoving in ['right', 'rightUp', 'rightDown']:
                 drawImage(self.ridingIm, self.x, self.y+10, align='center',
@@ -213,46 +271,105 @@ class Player:
 
     def moveOnKeyHold(self):
         if ((self.dirMoving == 'right') and (not self.isAtRightBorder) and 
-        not (self.atCaveBorder)):
-            self.x += 10
+        not (self.atRightCaveBorder)):
+            if not self.centered:
+                self.x += 10
+            else:
+                self.lastX += 10
         if ((self.dirMoving == 'left') and (not self.isAtLeftBorder) and 
-            not (self.atCaveBorder)):
-            self.x -= 10
+            not (self.atLeftCaveBorder)):
+            if not self.centered:
+                self.x -= 10
+            else:
+                self.lastX -= 10
         if ((self.dirMoving == 'up' or 
             (self.dirMoving == 'rightUp' and (self.isAtRightBorder)) or
             ((self.dirMoving == 'leftUp') and (self.isAtLeftBorder))) and
-            not self.isJumping and not (self.atCaveBorder)):
-            self.y -= 10
-        if ((self.dirMoving == 'down' and not (self.atCaveBorder)) or 
+            not self.isJumping and not (self.atTopCaveBorder) and not
+            self.atRightCaveBorder and not self.atLeftCaveBorder):
+            if not self.centered:
+                self.y -= 10
+            else:
+                self.lastY -= 10
+        if (((self.dirMoving == 'down' and not (self.atCaveBorder)) or 
             ((self.dirMoving == 'leftDown') and (self.isAtLeftBorder)) or
             ((self.dirMoving == 'rightDown') and (self.isAtRightBorder)) and 
-            (not self.isJumping) and not (self.atCaveBorder)):
-            self.y += 10
+            (not self.isJumping) and not (self.atBottomCaveBorder) and not
+            self.atRightCaveBorder and not self.atLeftCaveBorder) and 
+            (not self.atCaveStart)):
+            if not self.centered:
+                self.y += 10
+            elif self.centered:
+                self.lastY += 10
         if ((self.dirMoving == 'rightUp') and (not self.isAtRightBorder) and 
-            not (self.atCaveBorder)):
-            if self.isJumping:
-                self.x += 10
-            else:
-                self.x += 10
-                self.y -= 10
+            not (self.atRightCaveBorder) and (not self.atTopCaveBorder)):
+            if not self.centered:
+                if self.isJumping:
+                    self.x += 10
+                else:
+                    self.x += 10
+                    self.y -= 10
+            elif self.centered:
+                if self.isJumping:
+                    self.lastX += 10
+                else:
+                    self.lastX += 10
+                    self.lastY -= 10
         if ((self.dirMoving == 'leftUp') and (not self.isAtLeftBorder) and 
-            not (self.atCaveBorder)):
-            if self.isJumping:
-                self.x -= 10
-            else:
-                self.x -= 10
-                self.y -= 10
+            not (self.atLeftCaveBorder) and (not self.atTopCaveBorder)):
+            if not self.centered:
+                if self.isJumping:
+                    self.x -= 10
+                else:
+                    self.x -= 10
+                    self.y -= 10
+            elif self.centered:
+                if self.isJumping:
+                    self.lastX -= 10
+                else:
+                    self.lastX -= 10
+                    self.lastY -= 10
         if ((self.dirMoving == 'leftDown') and (not self.isAtLeftBorder) and 
-            not (self.atCaveBorder)):
-            if self.isJumping:
-                self.x -= 10
-            else:
-                self.x -= 10
-                self.y += 10
+            not (self.atLeftCaveBorder) and not self.atCaveStart):
+            if not self.centered:
+                if self.isJumping:
+                    self.x -= 10
+                else:
+                    self.x -= 10
+                    self.y += 10
+            elif self.centered:
+                if self.isJumping:
+                    self.lastX -= 10
+                else:
+                    self.lastX -= 10
+                    self.lastY += 10
         if ((self.dirMoving == 'rightDown') and (not self.isAtRightBorder) and 
-            not (self.atCaveBorder)):
-            if self.isJumping:
-                self.x += 10
-            else:
-                self.x += 10
-                self.y += 10
+            not (self.atRightCaveBorder) and not self.atCaveStart):
+            if not self.centered:
+                if self.isJumping:
+                    self.x += 10
+                else:
+                    self.x += 10
+                    self.y += 10
+            elif self.centered:
+                if self.isJumping:
+                    self.lastX += 10
+                else:
+                    self.lastX += 10
+                    self.lastY += 10
+
+    def onZoomIn(self, appWidth, appHeight):
+        self.x = appWidth//2
+        self.y = appHeight//2
+        self.charWidth *= 3
+        self.charHeight *= 3
+        self.walkingImWidth *= 3
+        self.walkingImHeight *= 3
+
+    def onZoomOut(self):
+        self.x = self.lastX
+        self.y = self.lastY
+        self.charWidth /= 3
+        self.charHeight /= 3
+        self.walkingImWidth /= 3
+        self.walkingImHeight /= 3
