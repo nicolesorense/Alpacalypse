@@ -13,7 +13,6 @@ def newGame(app):
     app.items = []
     app.terrain = Map()
 
-    # for welcome screen
     # instructions typed up using google drawings
     app.instructions = 'instructions.png'
     app.helpWidth, app.helpHeight = getImageSize(app.instructions)
@@ -215,6 +214,10 @@ def game_redrawAll(app):
         for mask in app.terrain.pacaMasks:
             mask.draw(char, app.zoom)
 
+        # draw shields
+        for shield in app.terrain.shields:
+            shield.draw(char, app.zoom)
+
         # flying
         if char.wingPowerUp:
             # draw cast shadow
@@ -352,8 +355,8 @@ def game_onStep(app):
     for projectile in projectiles:
         projectile.fire()
 
-    # check for collision every 0.5 seconds
-    if app.steps % 10 == 0:
+    # check for collision every 0.5 seconds, skip if have shield powerup
+    if app.steps % 10 == 0 and not char.shieldPowerUp:
         for projectile in projectiles:
             if projectile.isCollision(char, app.zoom):
                 char.health -= 1
@@ -380,6 +383,10 @@ def game_onStep(app):
     # generate alpacaMask occasionally in caves
     if app.steps % 100 == 0:
         app.terrain.generatePacaMask(app.separateCaves)
+
+    # generate shield occasionally in caves
+    if app.steps % 150 == 0:
+        app.terrain.generateShield(app.separateCaves)
 
     # alpaca movement
     for alpaca in app.alpacas:
@@ -418,13 +425,16 @@ def game_onStep(app):
 
     # check if player jumps on alpaca
     for alpaca in app.alpacas:
-        if ((char.x-10 <= alpaca.x <= char.x+10) and 
-            ((char.y+char.charHeight//2)-10 <= alpaca.y <= (char.y+char.charHeight//2)+10) and
+        x = char.x - (char.lastX - alpaca.x)*3 if app.zoom else alpaca.x
+        y = char.y - (char.lastY - alpaca.y)*3 if app.zoom else alpaca.y
+        xMargin = 10*3 if app.zoom else 10
+        if ((char.x-xMargin <= x <= char.x+xMargin) and 
+            ((char.y+char.charHeight//2)-xMargin <= y <= (char.y+char.charHeight//2)+xMargin) and
             not char.wingPowerUp):
             char.alpacaRiding = alpaca
             alpaca.playerOnBack = True
             char.ridingTimer = 200
-        alpaca.moveWithPlayer(char)
+        alpaca.moveWithPlayer(char, app.zoom)
 
     # after 10 seconds, character gets off of alpaca
     if char.ridingTimer > 0:
@@ -475,8 +485,8 @@ def game_onStep(app):
     for mask in app.terrain.pacaMasks:
         x = char.x - (char.lastX - mask.x) if app.zoom else mask.x
         y = char.y - (char.lastY - mask.y) if app.zoom else mask.y
-        xRange = 10*30 if app.zoom else 10
-        yRange = 30*30 if app.zoom else 30
+        xRange = 10*3 if app.zoom else 10
+        yRange = 30*3 if app.zoom else 30
         if ((x-xRange <= char.x <= x+xRange) and 
             (y-yRange <= char.y <= y+yRange)) and not char.alpacaRiding:
             char.maskPowerUp = mask
@@ -487,7 +497,7 @@ def game_onStep(app):
     # move mask with player
     for mask in app.terrain.pacaMasks:
         if mask.onPlayer == True:
-            mask.followPlayer(char)
+            mask.followPlayer(char, app.zoom)
 
     # lose mask power up after 10 seconds
     if char.maskTimer > 0:
@@ -496,6 +506,39 @@ def game_onStep(app):
         char.maskPowerUp.onPlayer = False
         app.terrain.pacaMasks.remove(char.maskPowerUp)
         char.maskPowerUp = None
+
+    # check if character got shield
+    for shield in app.terrain.shields:
+        x = char.x - (char.lastX - shield.x) if app.zoom else shield.x
+        y = char.y - (char.lastY - shield.y) if app.zoom else shield.y
+        xRange = 10*3 if app.zoom else 10
+        yRange = 30*3 if app.zoom else 30
+        if (((x-xRange <= char.x <= x+xRange) and 
+            (y-yRange <= char.y <= y+yRange)) and not char.alpacaRiding and
+            not char.maskPowerUp):
+            char.shieldPowerUp = shield
+            shield.onPlayer = True
+            if char.shieldTimer == 0:
+                char.shieldTimer = 100
+
+    # shield around player if get shield power up
+    if char.shieldPowerUp:
+        for shield in app.terrain.shields:
+            shield.shieldAroundPlayer(char)
+
+    # update sparkle index
+    if app.steps % 2 == 0:
+        for shield in app.terrain.shields:
+            shield.sparkleIndex += 1
+            shield.sparkleIndex %= len(shield.sparkleImages)
+    
+    # lose shield power up after 10 seconds
+    if char.shieldTimer > 0:
+        char.shieldTimer -= 1
+    if char.shieldTimer == 0 and char.shieldPowerUp != None:
+        char.shieldPowerUp.onPlayer = False
+        app.terrain.shields.remove(char.shieldPowerUp)
+        char.shieldPowerUp = None
 
     # check if character is at wall if in cave
     if char.y >= 280:
@@ -533,7 +576,7 @@ def game_onStep(app):
     if app.terrain.time == 'day':
         for alpaca in app.alpacas:
             if ((not alpaca.followingPlayer) and alpaca.followCoolDown == 0 and
-                    distance(alpaca.x, alpaca.y, char.x, char.y) < 200):
+                    distance(alpaca.x, alpaca.y, char.x, char.y) < 125):
                 alpaca.findShortestPath(char, app.width, app.height)
                 alpaca.followingPlayer = True
                 # input()
