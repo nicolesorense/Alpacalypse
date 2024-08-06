@@ -75,6 +75,8 @@ class Player:
         self.wingTimer = 0
         self.maskPowerUp = None
         self.maskTimer = 0
+        self.shieldPowerUp = None
+        self.shieldTimer = 0
         self.lastJumpY = None
 
 
@@ -123,15 +125,13 @@ class Player:
             # check if at left border
             if ((not self.isInTunnel(tunnels) and 
                 ((borderX <= self.x <= borderX+30) and 
-                 (borderY <= self.y <= borderY+20))) or 
-                self.isAtTunnelBorder(tunnels) == 'left'):
+                 (borderY <= self.y <= borderY+20)))):
                 self.atLeftCaveBorder = True
                 return
 
             if ((not self.isInTunnel(tunnels) and 
                 ((borderX-10 <= self.x <= borderX+20) and 
-                 (borderY <= self.y <= borderY+20))) or
-                 self.isAtTunnelBorder(tunnels) == 'right'):
+                 (borderY <= self.y <= borderY+20)))):
                 self.atRightCaveBorder = True
                 return
 
