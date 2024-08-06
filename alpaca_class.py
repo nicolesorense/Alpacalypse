@@ -49,8 +49,12 @@ class Alpaca:
         width, height = getImageSize(pinkPaca)
         width = width*3 if zoom else width
         height = height*3 if zoom else height
-        x = char.x-(char.lastX-self.x)*3 if zoom else self.x
-        y = char.y-(char.lastY-self.y)*3 if zoom else self.y
+        if self.playerOnBack and zoom:
+            x = self.x
+            y = self.y
+        else:
+            x = char.x-(char.lastX-self.x)*3 if zoom else self.x
+            y = char.y-(char.lastY-self.y)*3 if zoom else self.y
         if (self.color == 'pink') and (self.facing == 'right'):
             drawImage(pinkPaca, x, y,
                       width=width//3, height=height//3, align='center')
@@ -153,11 +157,12 @@ class Alpaca:
                 self.facing = 'left'
                 self.x -= 1
 
-    def moveWithPlayer(self, player):
+    def moveWithPlayer(self, player, zoom):
+        yShift = 35*3 if app.zoom else 35
         if self.playerOnBack:
             self.facing = player.facing
             self.x = player.x
-            self.y = player.y + 35
+            self.y = player.y + yShift
 
     # move alpacas when player is walking at border
     def scroll(self, direction):
@@ -194,10 +199,7 @@ class Alpaca:
            curr = getLowestFcost(open)
            open.remove(curr)
            closed.append(curr)
-        #    input()
-        #    print(f'curr: {curr.position}, goalPoint: {goalPoint.position}')
            if curr.closeTo(goalPoint):
-            #    print('here')
                # backtrack to start to find path
                path = []
                while curr != None:
